@@ -1,0 +1,6 @@
+{
+  "name": "Midtown Madness 3D",
+  "description": "Midtown Madness open-city 3D arcade racing simulator featuring multiple classic vehicles with custom speed, acceleration, handling, and durability stats, pedestrian & city traffic, destructible street props, police pursuits, blitz checkpoints, and realistic driving physics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
