@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { GameMode, VehicleConfig, CameraView } from '../types';
 import { TrafficCar } from '../simulation/trafficSystem';
 import {
-  Compass,
   RotateCcw,
   Volume2,
   VolumeX,
@@ -18,9 +17,9 @@ import {
   Radio,
   MessageSquare,
   Wrench,
-  Wind,
 } from 'lucide-react';
 import { soundManager, VoiceCallout } from '../audio/soundManager';
+import { SpeedometerGauge } from './SpeedometerGauge';
 
 interface GameHUDProps {
   vehicle: VehicleConfig;
@@ -59,14 +58,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   damagePercent,
   nitroRemaining,
   isNitroActive,
-  gameMode,
   cameraView,
-  playerPos,
-  trafficCars,
-  currentCheckpointIdx,
-  totalCheckpoints,
-  blitzTimeRemaining,
-  policeNearCount,
   isGameOver,
   gameOverReason,
   score,
@@ -84,7 +76,6 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const [isVoiceOn, setIsVoiceOn] = useState(true);
   const [sirenMode, setSirenMode] = useState<'wail' | 'yelp'>('wail');
   const [currentCallout, setCurrentCallout] = useState<VoiceCallout | null>(null);
-  const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Touch control states
   const touchStateRef = useRef({ throttle: 0, steer: 0, handbrake: false, nitro: false });
@@ -116,7 +107,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     });
   }, []);
 
-  // Clear callout after 3.2 seconds
+  // Clear callout after 3.4 seconds
   useEffect(() => {
     if (!currentCallout) return;
     const timer = setTimeout(() => {
@@ -124,110 +115,6 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     }, 3400);
     return () => clearTimeout(timer);
   }, [currentCallout]);
-
-  // Minimap radar rendering (drawing roads, player arrow, traffic dots, checkpoints, cops)
-  useEffect(() => {
-    const canvas = minimapCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const w = canvas.width;
-    const h = canvas.height;
-    const cx = w / 2;
-    const cy = h / 2;
-    const mapScale = 0.45; // pixels per world meter
-
-    ctx.clearRect(0, 0, w, h);
-
-    // Radar circular background
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, cx - 2, 0, Math.PI * 2);
-    ctx.clip();
-
-    ctx.fillStyle = '#09090bee';
-    ctx.fillRect(0, 0, w, h);
-
-    ctx.translate(cx, cy);
-    ctx.rotate(-playerPos.heading);
-
-    // Draw city roads relative to player
-    ctx.strokeStyle = '#27272a';
-    ctx.lineWidth = 14 * mapScale;
-
-    const roads = [-208, -104, 0, 104, 208];
-    for (const r of roads) {
-      const rx = (r - playerPos.x) * mapScale;
-      ctx.beginPath();
-      ctx.moveTo(rx, -200);
-      ctx.lineTo(rx, 200);
-      ctx.stroke();
-
-      const rz = (r - playerPos.z) * mapScale;
-      ctx.beginPath();
-      ctx.moveTo(-200, rz);
-      ctx.lineTo(200, rz);
-      ctx.stroke();
-    }
-
-    // Draw River canal
-    ctx.fillStyle = '#0284c755';
-    const riverY = (0 - playerPos.z) * mapScale;
-    ctx.fillRect(-200, riverY - (22 * mapScale), 400, 44 * mapScale);
-
-    // Draw traffic cars
-    for (const car of trafficCars) {
-      const tx = (car.x - playerPos.x) * mapScale;
-      const tz = (car.z - playerPos.z) * mapScale;
-      if (Math.hypot(tx, tz) > cx - 6) continue;
-
-      ctx.fillStyle = car.isPolice ? '#38bdf8' : '#eab308';
-      ctx.beginPath();
-      ctx.arc(tx, tz, 2.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Draw checkpoint if in blitz mode
-    if (gameMode === 'blitz') {
-      const cpPositions = [
-        { x: -160, z: -160 }, { x: -50, z: -160 }, { x: 50, z: -160 },
-        { x: 160, z: -80 }, { x: 160, z: 0 }, { x: 50, z: 104 },
-        { x: -100, z: 120 }, { x: -160, z: 0 },
-      ];
-      const targetCp = cpPositions[currentCheckpointIdx % cpPositions.length];
-      if (targetCp) {
-        const cpx = (targetCp.x - playerPos.x) * mapScale;
-        const cpz = (targetCp.z - playerPos.z) * mapScale;
-        ctx.fillStyle = '#22c55e';
-        ctx.beginPath();
-        ctx.arc(cpx, cpz, 4.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    ctx.restore();
-
-    // Draw static player vehicle chevron arrow in center pointing UP
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.fillStyle = '#f43f5e';
-    ctx.beginPath();
-    ctx.moveTo(0, -7);
-    ctx.lineTo(5, 6);
-    ctx.lineTo(0, 3);
-    ctx.lineTo(-5, 6);
-    ctx.closePath();
-    ctx.fill();
-
-    // Radar rim border
-    ctx.strokeStyle = '#3f3f46';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(0, 0, cx - 2, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
-  }, [playerPos, trafficCars, gameMode, currentCheckpointIdx]);
 
   const speedIntensity = Math.max(0, (speedMph - 70) / 90);
   const showSpeedWarp = speedIntensity > 0 || isNitroActive;
@@ -243,7 +130,6 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             background: 'radial-gradient(circle, transparent 40%, rgba(56, 189, 248, 0.15) 80%, rgba(225, 29, 72, 0.25) 100%)',
           }}
         >
-          {/* Subtle speed streak lines */}
           <svg className="w-full h-full opacity-60">
             <line x1="0%" y1="0%" x2="25%" y2="25%" stroke="#ffffff" strokeWidth="2" strokeDasharray="30 15" />
             <line x1="100%" y1="0%" x2="75%" y2="25%" stroke="#ffffff" strokeWidth="2" strokeDasharray="30 15" />
@@ -254,68 +140,30 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         </div>
       )}
 
-      {/* Top Bar: Mode Status, Radar, Voice Banner & Menu Button */}
+      {/* Top Bar: Left slot reserved for Persistent MiniMapOverlay in GameCanvas, Center Voice Banner, Right Quick Actions */}
       <div className="flex items-start justify-between w-full relative z-20">
-        {/* Top-Left: Minimap Radar & City Info */}
-        <div className="pointer-events-auto flex items-center space-x-3 bg-zinc-950/85 backdrop-blur-md p-2.5 rounded-2xl border border-zinc-800/80 shadow-2xl">
-          <canvas
-            ref={minimapCanvasRef}
-            width={110}
-            height={110}
-            className="w-[110px] h-[110px] rounded-xl border border-zinc-800"
-          />
-          <div className="space-y-1 font-mono pr-2">
-            <div className="flex items-center space-x-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <span className="text-xs font-bold text-white uppercase tracking-wider">
-                {gameMode === 'blitz' ? 'BLITZ RACE' : gameMode === 'pursuit' ? 'COP PURSUIT' : 'CRUISE CITY'}
-              </span>
-            </div>
-            <div className="text-[11px] text-zinc-400 truncate max-w-[120px]">
-              {vehicle.name}
-            </div>
-            <div className="text-[11px] text-amber-400 font-bold">
-              SCORE: {score}
-            </div>
-
-            {/* Blitz Countdown */}
-            {gameMode === 'blitz' && (
-              <div className="text-xs font-bold text-emerald-400 flex items-center space-x-1">
-                <Flag className="w-3.5 h-3.5" />
-                <span>CP: {currentCheckpointIdx + 1}/{totalCheckpoints}</span>
-                <span className="text-amber-400 ml-1">⏱ {Math.ceil(blitzTimeRemaining)}s</span>
-              </div>
-            )}
-
-            {/* Pursuit Alert */}
-            {gameMode === 'pursuit' && (
-              <div className={`text-xs font-bold flex items-center space-x-1 ${policeNearCount > 0 ? 'text-red-400 animate-pulse' : 'text-zinc-400'}`}>
-                <Siren className="w-3.5 h-3.5" />
-                <span>{policeNearCount > 0 ? `🚨 HEAT: ${policeNearCount} COPS` : 'PATROL EVADED'}</span>
-              </div>
-            )}
-          </div>
-        </div>
+        {/* Top-Left Spacer (occupied by persistent MiniMapOverlay in GameCanvas) */}
+        <div className="w-10 h-10 pointer-events-none" />
 
         {/* Top Center: Iconic Midtown Madness Radio & Cabbie Voice Callout Banner */}
         {currentCallout && (
-          <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1 max-w-md w-full px-4 animate-in fade-in slide-in-from-top-4 duration-200">
+          <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1 max-w-md w-full px-4">
             <div
-              className={`flex items-center space-x-3 p-3 rounded-2xl border shadow-2xl backdrop-blur-xl ${
+              className={`flex items-center space-x-3 p-3 rounded-2xl border shadow-2xl ${
                 currentCallout.speaker === 'cop'
-                  ? 'bg-blue-950/90 border-blue-500/80 text-white'
+                  ? 'bg-blue-950/95 border-blue-500/80 text-white'
                   : currentCallout.speaker === 'pedestrian'
-                  ? 'bg-amber-950/90 border-amber-500/80 text-white'
+                  ? 'bg-amber-950/95 border-amber-500/80 text-white'
                   : currentCallout.speaker === 'announcer'
-                  ? 'bg-emerald-950/90 border-emerald-500/80 text-white'
-                  : 'bg-rose-950/90 border-rose-500/80 text-white'
+                  ? 'bg-emerald-950/95 border-emerald-500/80 text-white'
+                  : 'bg-rose-950/95 border-rose-500/80 text-white'
               }`}
             >
               <div className="p-2 rounded-xl bg-black/40 border border-white/10 shrink-0">
                 {currentCallout.speaker === 'cop' ? (
-                  <Radio className="w-5 h-5 text-sky-400 animate-pulse" />
+                  <Radio className="w-5 h-5 text-sky-400" />
                 ) : currentCallout.speaker === 'pedestrian' ? (
-                  <AlertTriangle className="w-5 h-5 text-amber-400 animate-bounce" />
+                  <AlertTriangle className="w-5 h-5 text-amber-400" />
                 ) : currentCallout.speaker === 'announcer' ? (
                   <Flag className="w-5 h-5 text-emerald-400" />
                 ) : (
@@ -346,7 +194,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           <button
             onClick={handleToggleVoice}
             title={isVoiceOn ? 'Voice Callouts: Enabled' : 'Voice Callouts: Muted'}
-            className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-zinc-900/85 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700/60 shadow-lg transition text-xs font-semibold cursor-pointer"
+            className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-zinc-900/95 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700/60 shadow-lg transition text-xs font-semibold cursor-pointer"
           >
             <MessageSquare className={`w-3.5 h-3.5 ${isVoiceOn ? 'text-amber-400' : 'text-zinc-500'}`} />
             <span className="hidden sm:inline">Voice:</span>
@@ -358,7 +206,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           {/* Pause / Garage Menu Return */}
           <button
             onClick={onReturnToMenu}
-            className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-zinc-900/85 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700/60 shadow-lg transition text-xs font-semibold cursor-pointer"
+            className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-zinc-900/95 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700/60 shadow-lg transition text-xs font-semibold cursor-pointer"
           >
             <Car className="w-4 h-4 text-amber-400" />
             <span className="hidden sm:inline">Garage</span>
@@ -368,7 +216,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           <button
             onClick={handleToggleMute}
             aria-label="Toggle Mute"
-            className="p-2 rounded-xl bg-zinc-900/85 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700/60 shadow-lg transition cursor-pointer"
+            className="p-2 rounded-xl bg-zinc-900/95 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700/60 shadow-lg transition cursor-pointer"
           >
             {isMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
           </button>
@@ -377,7 +225,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
       {/* Center Damage Warning & Game Over Banner */}
       {isGameOver && (
-        <div className="pointer-events-auto absolute inset-0 flex items-center justify-center bg-black/75 backdrop-blur-md z-50 p-6">
+        <div className="pointer-events-auto absolute inset-0 flex items-center justify-center bg-black/85 z-50 p-6">
           <div className="max-w-md w-full bg-zinc-950 border border-zinc-800 rounded-3xl p-6 shadow-2xl text-center space-y-4">
             {gameOverReason === 'victory' ? (
               <>
@@ -397,7 +245,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             ) : gameOverReason === 'busted' ? (
               <>
                 <div className="w-16 h-16 mx-auto rounded-full bg-red-500/20 border border-red-500/40 flex items-center justify-center">
-                  <Siren className="w-10 h-10 text-red-500 animate-bounce" />
+                  <Siren className="w-10 h-10 text-red-500" />
                 </div>
                 <h2 className="text-3xl font-black italic text-red-500 tracking-wide">
                   BUSTED!
@@ -450,92 +298,27 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         </div>
       )}
 
-      {/* Main Midtown Dashboard Cluster: Speedometer + Tachometer + Damage Bar */}
-      <div className="flex items-end justify-between w-full pointer-events-none mb-1">
-        {/* Speedometer & Gear Display */}
-        <div className="bg-zinc-950/85 backdrop-blur-md p-3.5 rounded-2xl border border-zinc-800/80 shadow-2xl flex items-center space-x-4 font-mono pointer-events-auto">
-          {/* Digital Speed & Gear */}
-          <div className="text-center">
-            <div className="text-3xl font-black tracking-tighter text-white">
-              {Math.round(speedMph)}
-            </div>
-            <div className="text-[10px] text-zinc-400 tracking-wider">MPH</div>
-          </div>
-
-          <div className="h-10 w-[1px] bg-zinc-800" />
-
-          {/* Gear Indicator */}
-          <div className="text-center">
-            <div className={`text-2xl font-black ${gear === 'R' ? 'text-rose-400' : 'text-amber-400'}`}>
-              {gear}
-            </div>
-            <div className="text-[10px] text-zinc-400">GEAR</div>
-          </div>
-
-          <div className="h-10 w-[1px] bg-zinc-800" />
-
-          {/* RPM Bar */}
-          <div className="w-24">
-            <div className="flex justify-between text-[10px] text-zinc-400 mb-0.5">
-              <span>RPM</span>
-              <span className="text-zinc-300 font-bold">{Math.round(rpm)}</span>
-            </div>
-            <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
-              <div
-                className={`h-full transition-all duration-75 rounded-full ${
-                  rpm > 6500 ? 'bg-rose-500' : rpm > 4500 ? 'bg-amber-400' : 'bg-sky-400'
-                }`}
-                style={{ width: `${Math.min(((rpm - 1000) / 6500) * 100, 100)}%` }}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Damage Meter & Nitro Boost Meter */}
-        <div className="bg-zinc-950/85 backdrop-blur-md p-3.5 rounded-2xl border border-zinc-800/80 shadow-2xl space-y-2 font-mono w-48 pointer-events-auto">
-          {/* Damage Gauge */}
-          <div>
-            <div className="flex justify-between items-center text-[10px] text-zinc-400 mb-0.5">
-              <span>DAMAGE</span>
-              <span className={`font-bold ${damagePercent > 75 ? 'text-rose-500' : damagePercent > 40 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                {damagePercent}%
-              </span>
-            </div>
-            <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
-              <div
-                className={`h-full transition-all duration-150 rounded-full ${
-                  damagePercent > 75 ? 'bg-rose-600' : damagePercent > 40 ? 'bg-amber-500' : 'bg-emerald-500'
-                }`}
-                style={{ width: `${damagePercent}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Nitro Gauge */}
-          <div>
-            <div className="flex justify-between items-center text-[10px] text-zinc-400 mb-0.5">
-              <span className="flex items-center space-x-1">
-                <Flame className={`w-3 h-3 ${isNitroActive ? 'text-cyan-400 animate-pulse' : 'text-cyan-500'}`} />
-                <span>NITRO BOOST</span>
-              </span>
-              <span className="font-bold text-cyan-400">{Math.ceil(nitroRemaining)}s</span>
-            </div>
-            <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-100 rounded-full"
-                style={{ width: `${(nitroRemaining / vehicle.stats.nitroCapacity) * 100}%` }}
-              />
-            </div>
-          </div>
-        </div>
+      {/* Main Midtown Dashboard Cluster: Analog/Digital Speedometer Gauge + Telemetry */}
+      <div className="flex items-end justify-end w-full pointer-events-none mb-1">
+        <SpeedometerGauge
+          speedMph={speedMph}
+          maxVehicleSpeedMph={vehicle.stats.topSpeedMph}
+          rpm={rpm}
+          gear={gear}
+          damagePercent={damagePercent}
+          nitroRemaining={nitroRemaining}
+          nitroCapacity={vehicle.stats.nitroCapacity}
+          isNitroActive={isNitroActive}
+        />
       </div>
+
 
       {/* Ergonomic Collapsible Bottom Control Dock */}
       <div className="pointer-events-auto mx-auto mb-2 flex flex-col items-center">
         {/* Toggle Collapse Button */}
         <button
           onClick={() => setIsDockCollapsed(!isDockCollapsed)}
-          className="px-3 py-1 rounded-t-xl bg-zinc-900/90 hover:bg-zinc-800 text-zinc-400 hover:text-white border-t border-x border-zinc-700/60 text-[11px] font-semibold flex items-center space-x-1 transition cursor-pointer shadow-md"
+          className="px-3 py-1 rounded-t-xl bg-zinc-900/95 hover:bg-zinc-800 text-zinc-400 hover:text-white border-t border-x border-zinc-700/60 text-[11px] font-semibold flex items-center space-x-1 transition cursor-pointer shadow-md"
         >
           {isDockCollapsed ? (
             <>
@@ -552,9 +335,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
         {/* Dock Bar Content */}
         {!isDockCollapsed && (
-          <div className="bg-zinc-950/90 backdrop-blur-xl border border-zinc-800/90 rounded-2xl px-4 py-2.5 shadow-2xl flex flex-wrap items-center justify-center gap-2 max-w-[min(940px,94vw)]">
+          <div className="bg-zinc-950/95 border border-zinc-800/90 rounded-2xl px-4 py-2.5 shadow-2xl flex flex-wrap items-center justify-center gap-2 max-w-[min(940px,94vw)]">
             {/* Camera View Selector */}
-            <div className="flex items-center space-x-1 bg-zinc-900/80 p-1 rounded-xl border border-zinc-800">
+            <div className="flex items-center space-x-1 bg-zinc-900/90 p-1 rounded-xl border border-zinc-800">
               <Camera className="w-3.5 h-3.5 text-zinc-400 ml-1.5 mr-0.5" />
               {(['chase_far', 'chase_close', 'hood', 'orbit'] as CameraView[]).map((v) => (
                 <button
@@ -607,7 +390,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 <>
                   <button
                     onClick={onToggleSiren}
-                    className="flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-blue-950/80 hover:bg-blue-900 text-sky-300 border border-blue-500/50 text-xs font-bold transition cursor-pointer"
+                    className="flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-blue-950/90 hover:bg-blue-900 text-sky-300 border border-blue-500/50 text-xs font-bold transition cursor-pointer"
                   >
                     <Siren className="w-3.5 h-3.5 text-sky-400" />
                     <span>Siren</span>
@@ -666,14 +449,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           <button
             onPointerDown={() => setTouch({ steer: -1 })}
             onPointerUp={() => setTouch({ steer: 0 })}
-            className="w-14 h-14 rounded-2xl bg-zinc-900/90 active:bg-rose-600 border border-zinc-700 text-white font-black text-xl flex items-center justify-center shadow-xl active:scale-95 transition"
+            className="w-14 h-14 rounded-2xl bg-zinc-900/95 active:bg-rose-600 border border-zinc-700 text-white font-black text-xl flex items-center justify-center shadow-xl active:scale-95 transition"
           >
             ◀
           </button>
           <button
             onPointerDown={() => setTouch({ steer: 1 })}
             onPointerUp={() => setTouch({ steer: 0 })}
-            className="w-14 h-14 rounded-2xl bg-zinc-900/90 active:bg-rose-600 border border-zinc-700 text-white font-black text-xl flex items-center justify-center shadow-xl active:scale-95 transition"
+            className="w-14 h-14 rounded-2xl bg-zinc-900/95 active:bg-rose-600 border border-zinc-700 text-white font-black text-xl flex items-center justify-center shadow-xl active:scale-95 transition"
           >
             ▶
           </button>
@@ -683,14 +466,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           <button
             onPointerDown={() => setTouch({ handbrake: true })}
             onPointerUp={() => setTouch({ handbrake: false })}
-            className="w-12 h-12 rounded-2xl bg-amber-950/80 active:bg-amber-600 border border-amber-600 text-amber-300 font-bold text-xs flex items-center justify-center shadow-xl active:scale-95 transition"
+            className="w-12 h-12 rounded-2xl bg-amber-950/90 active:bg-amber-600 border border-amber-600 text-amber-300 font-bold text-xs flex items-center justify-center shadow-xl active:scale-95 transition"
           >
             DRIFT
           </button>
           <button
             onPointerDown={() => setTouch({ throttle: -1 })}
             onPointerUp={() => setTouch({ throttle: 0 })}
-            className="w-14 h-14 rounded-2xl bg-zinc-900/90 active:bg-rose-600 border border-zinc-700 text-white font-black text-xl flex items-center justify-center shadow-xl active:scale-95 transition"
+            className="w-14 h-14 rounded-2xl bg-zinc-900/95 active:bg-rose-600 border border-zinc-700 text-white font-black text-xl flex items-center justify-center shadow-xl active:scale-95 transition"
           >
             ▼
           </button>

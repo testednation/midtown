@@ -1,5 +1,88 @@
 import * as THREE from 'three';
-import { Checkpoint, DestructibleProp } from '../types';
+import { Checkpoint, DestructibleProp, CityLandmark } from '../types';
+
+export const CHICAGO_LANDMARKS: CityLandmark[] = [
+  {
+    id: 'willis_tower',
+    name: 'Willis Tower (Sears)',
+    shortLabel: 'WILLIS',
+    category: 'tower',
+    x: 0,
+    z: 104,
+    color: '#f59e0b',
+    description: '110-story bronze bundled-tube supertall with twin broadcast spires.',
+  },
+  {
+    id: 'michigan_bridge',
+    name: 'Michigan Ave Drawbridge',
+    shortLabel: 'MICH JUMP',
+    category: 'bridge',
+    x: -52,
+    z: 0,
+    color: '#f43f5e',
+    description: 'Center bascule stunt bridge over the Chicago River canal.',
+  },
+  {
+    id: 'lakeshore_bridge',
+    name: 'Lakeshore Stunt Bridge',
+    shortLabel: 'EAST JUMP',
+    category: 'bridge',
+    x: 156,
+    z: 0,
+    color: '#fb7185',
+    description: 'High-speed East Loop bascule jump ramp spanning the canal.',
+  },
+  {
+    id: 'wrigley_clock',
+    name: 'Wrigley Clock Tower',
+    shortLabel: 'WRIGLEY',
+    category: 'historic',
+    x: -208,
+    z: 104,
+    color: '#eab308',
+    description: 'Historic Art-Deco terracotta landmark with golden spire crown.',
+  },
+  {
+    id: 'cta_station',
+    name: 'CTA Red Line Station',
+    shortLabel: 'L-TRAIN',
+    category: 'transit',
+    x: 52,
+    z: 104,
+    color: '#ef4444',
+    description: 'Elevated steel trestle station along the Z=104 L-Train corridor.',
+  },
+  {
+    id: 'riverwalk_marina',
+    name: 'Chicago Riverwalk',
+    shortLabel: 'RIVERWALK',
+    category: 'waterfront',
+    x: -156,
+    z: 0,
+    color: '#38bdf8',
+    description: 'Scenic waterfront promenade and West River bridge crossing.',
+  },
+  {
+    id: 'tribune_plaza',
+    name: 'Tribune Spire Plaza',
+    shortLabel: 'TRIBUNE',
+    category: 'historic',
+    x: 104,
+    z: -208,
+    color: '#facc15',
+    description: 'South Loop neo-gothic tower and Michigan Avenue gateway.',
+  },
+  {
+    id: 'union_station',
+    name: 'Union Station Depot',
+    shortLabel: 'UNION STA',
+    category: 'transit',
+    x: -104,
+    z: -104,
+    color: '#a855f7',
+    description: 'Downtown West Loop commuter rail hub and broad concourse.',
+  },
+];
 
 export interface CityEnvironment {
   sceneGroup: THREE.Group;
@@ -14,6 +97,7 @@ export interface CityEnvironment {
   propMeshes: Map<number, THREE.Group>;
   checkpoints: Checkpoint[];
   checkpointMeshes: THREE.Group[];
+  landmarks: CityLandmark[];
   waterMesh?: THREE.Mesh;
   lTrainGroup?: THREE.Group;
   cityBounds: { minX: number; maxX: number; minZ: number; maxZ: number };
@@ -593,6 +677,7 @@ export function buildChicagoCity(): CityEnvironment {
     propMeshes,
     checkpoints,
     checkpointMeshes,
+    landmarks: CHICAGO_LANDMARKS,
     waterMesh,
     lTrainGroup,
     cityBounds: {

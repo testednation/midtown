@@ -1,16 +1,17 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { GameMode, VehicleConfig, CameraView, VehicleId } from '../types';
+import { GameMode, CameraView, VehicleId } from '../types';
 import { getVehicleConfig } from '../data/vehicles';
 import { buildVehicleMesh, VehicleMeshBundle, updateVehicleWheelVisuals } from '../models/vehicleBuilder';
-import { buildChicagoCity, CityEnvironment } from '../models/cityBuilder';
+import { buildChicagoCity, CityEnvironment, CHICAGO_LANDMARKS } from '../models/cityBuilder';
 import { PhysicsEngine, DriveInput } from '../simulation/physicsEngine';
 import { TrafficSystem } from '../simulation/trafficSystem';
 import { ParticleManager } from '../simulation/particles';
 import { SkidMarkManager } from '../simulation/skidMarks';
 import { soundManager } from '../audio/soundManager';
 import { GameHUD } from './GameHUD';
+import { MiniMapOverlay } from './MiniMapOverlay';
 
 interface GameCanvasProps {
   vehicleId: VehicleId;
@@ -36,7 +37,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [nitroRemaining, setNitroRemaining] = useState(vehicleConfig.stats.nitroCapacity);
   const [isNitroActive, setIsNitroActive] = useState(false);
   const [cameraView, setCameraView] = useState<CameraView>('chase_far');
-  const [playerPos, setPlayerPos] = useState({ x: 0, z: -140, heading: 0 });
+  const [playerPos, setPlayerPos] = useState({ x: -52, z: -140, heading: Math.PI });
+  const [lTrainXState, setLTrainXState] = useState(-200);
   const [score, setScore] = useState(0);
   const [currentCheckpointIdx, setCurrentCheckpointIdx] = useState(0);
   const [blitzTimeRemaining, setBlitzTimeRemaining] = useState(60);
@@ -53,6 +55,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const vehicleBundleRef = useRef<VehicleMeshBundle | null>(null);
   const isSirenOnRef = useRef(false);
   const cameraShakeRef = useRef(0);
+  const cameraViewRef = useRef<CameraView>('chase_far');
 
   // Touch & Key Inputs
   const keysRef = useRef<{ [key: string]: boolean }>({});
@@ -65,15 +68,37 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   // Reusable vectors for camera
   const _camTarget = useRef(new THREE.Vector3());
-  const _camPos = useRef(new THREE.Vector3());
 
-  // Reset Car Action
+  // Reset Car Action (place on Michigan Ave at x = -52, z = -140)
   const handleResetCar = useCallback(() => {
     if (physicsEngineRef.current) {
-      physicsEngineRef.current.resetPosition(0, -140, 0);
+      physicsEngineRef.current.resetPosition(-52, -140, Math.PI);
       soundManager.playMenuClick();
       soundManager.triggerVoiceCallout('cabbie', "Back on four wheels!");
     }
+  }, []);
+
+  // Teleport Car to Nearest Road Adjacent to Landmark
+  const handleTeleportToLandmark = useCallback((lmX: number, lmZ: number) => {
+    if (!physicsEngineRef.current) return;
+    const roadCoords = [-260, -156, -52, 52, 156, 260];
+    // Find nearest N-S avenue to landmark X
+    let bestRoadX = roadCoords[0];
+    let minDiff = Infinity;
+    for (const r of roadCoords) {
+      const diff = Math.abs(r - lmX);
+      if (diff < minDiff) {
+        minDiff = diff;
+        bestRoadX = r;
+      }
+    }
+    // If landmark is a River Canal bridge (lmZ === 0), spawn just south of the bridge facing North (heading = Math.PI)
+    const spawnZ = Math.abs(lmZ) < 25 ? -44 : lmZ;
+    const heading = Math.abs(lmZ) < 25 ? Math.PI : 0;
+
+    physicsEngineRef.current.resetPosition(bestRoadX, spawnZ, heading);
+    soundManager.playCheckpointChime();
+    soundManager.triggerVoiceCallout('cabbie', "Shortcut through Midtown!");
   }, []);
 
   // Repair Car Action
@@ -110,7 +135,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     setCurrentCheckpointIdx(0);
     setBlitzTimeRemaining(60);
     if (physicsEngineRef.current) {
-      physicsEngineRef.current.resetPosition(0, -140, 0);
+      physicsEngineRef.current.resetPosition(-52, -140, Math.PI);
       physicsEngineRef.current.repairVehicle();
     }
     soundManager.playMenuClick();
@@ -118,6 +143,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   // Set camera view
   const handleSetCameraView = useCallback((view: CameraView) => {
+    cameraViewRef.current = view;
     setCameraView(view);
     soundManager.playMenuClick();
   }, []);
@@ -133,10 +159,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       } else if (e.code === 'KeyH') {
         handleHonk();
       } else if (e.code === 'KeyC') {
-        setCameraView(prev => {
+        setCameraView((prev) => {
           const views: CameraView[] = ['chase_far', 'chase_close', 'hood', 'orbit'];
-          const nextIdx = (views.indexOf(prev) + 1) % views.length;
-          return views[nextIdx];
+          const nextView = views[(views.indexOf(prev) + 1) % views.length];
+          cameraViewRef.current = nextView;
+          return nextView;
         });
       }
     };
@@ -196,7 +223,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     pmrem.dispose();
 
     const camera = new THREE.PerspectiveCamera(55, width / height, 0.2, 800);
-    camera.position.set(0, 4, -148);
+    camera.position.set(-52, 4, -132);
 
     // Warm Key Sun Light + Cool Hemisphere Fill
     const sunLight = new THREE.DirectionalLight(0xfff1db, 2.0);
@@ -227,8 +254,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     scene.add(vehicleBundle.group);
     vehicleBundleRef.current = vehicleBundle;
 
-    // Initialize Physics Engine
-    const physics = new PhysicsEngine(vehicleConfig, city, 0, -140);
+    // Initialize Physics Engine on Michigan Avenue (-52, -140) facing North (Math.PI) toward the Drawbridge & Willis Tower!
+    const physics = new PhysicsEngine(vehicleConfig, city, -52, -140);
+    physics.resetPosition(-52, -140, Math.PI);
     physicsEngineRef.current = physics;
 
     // Initialize City Traffic System & Police Pursuit Squad
@@ -333,8 +361,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
 
       // 1. Persistent Tire Skid Marks & Drift Smoke
-      const isBurningRubber = (pState.isDrifting && Math.abs(pState.speed) > 4) ||
-                              (driveInput.throttle > 0 && Math.abs(pState.speed) < 3.5 && driveInput.handbrake);
+      const isBurningRubber =
+        (pState.isDrifting && Math.abs(pState.speed) > 4) ||
+        (driveInput.throttle > 0 && Math.abs(pState.speed) < 3.5 && driveInput.handbrake);
 
       if (isBurningRubber) {
         const trackW = vehicleConfig.dimensions.width * 0.85;
@@ -499,7 +528,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       // Camera Follow System (Chase Far, Chase Close, Hood, Orbit)
       const camTarget = _camTarget.current;
-      const camPos = _camPos.current;
+      const activeCamView = cameraViewRef.current;
 
       const targetX = pState.x;
       const targetY = pState.y + 1.2;
@@ -510,7 +539,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       const forwardX = Math.sin(pState.heading);
       const forwardZ = Math.cos(pState.heading);
 
-      if (cameraView === 'chase_far') {
+      if (activeCamView === 'chase_far') {
         const dist = 7.5;
         const height = 3.2;
         const desiredX = pState.x - forwardX * dist;
@@ -521,7 +550,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         camera.position.y = THREE.MathUtils.damp(camera.position.y, desiredY, 10, dt);
         camera.position.z = THREE.MathUtils.damp(camera.position.z, desiredZ, 10, dt);
         camera.lookAt(targetX + forwardX * lookAhead, targetY, targetZ + forwardZ * lookAhead);
-      } else if (cameraView === 'chase_close') {
+      } else if (activeCamView === 'chase_close') {
         const dist = 5.2;
         const height = 2.1;
         const desiredX = pState.x - forwardX * dist;
@@ -532,7 +561,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         camera.position.y = THREE.MathUtils.damp(camera.position.y, desiredY, 14, dt);
         camera.position.z = THREE.MathUtils.damp(camera.position.z, desiredZ, 14, dt);
         camera.lookAt(targetX + forwardX * (lookAhead + 2), targetY, targetZ + forwardZ * (lookAhead + 2));
-      } else if (cameraView === 'hood') {
+      } else if (activeCamView === 'hood') {
         const hoodX = pState.x + forwardX * (vehicleConfig.dimensions.length * 0.2);
         const hoodY = pState.y + vehicleConfig.dimensions.height * 0.85;
         const hoodZ = pState.z + forwardZ * (vehicleConfig.dimensions.length * 0.2);
@@ -552,7 +581,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         cameraShakeRef.current = THREE.MathUtils.damp(cameraShakeRef.current, 0, 8, dt);
       }
 
-      // Update React HUD state
+      // Update React HUD & Mini-Map state
       setSpeedMph(physResult.speedMph);
       setRpm(physResult.rpm);
       setGear(physResult.gear);
@@ -560,6 +589,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       setNitroRemaining(pState.nitroRemaining);
       setIsNitroActive(driveInput.nitro && pState.nitroRemaining > 0);
       setPlayerPos({ x: pState.x, z: pState.z, heading: pState.heading });
+      setLTrainXState(lTrainX);
       setScore(localScore);
 
       // Render
@@ -592,6 +622,25 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     <div className="relative w-full h-full overflow-hidden select-none">
       {/* 3D WebGL Canvas Viewport */}
       <div ref={mountRef} className="absolute inset-0 w-full h-full" />
+
+      {/* Persistent Mini-Map Overlay Tracking Player Position & Key City Landmarks */}
+      <div className="absolute top-4 left-4 z-30 pointer-events-none">
+        <MiniMapOverlay
+          playerPos={playerPos}
+          speedMph={speedMph}
+          gameMode={gameMode}
+          vehicleName={vehicleConfig.name}
+          score={score}
+          trafficCars={trafficSystemRef.current?.cars || []}
+          checkpoints={cityEnvRef.current?.checkpoints || []}
+          currentCheckpointIdx={currentCheckpointIdx}
+          blitzTimeRemaining={blitzTimeRemaining}
+          policeNearCount={policeNearCount}
+          lTrainX={lTrainXState}
+          landmarks={cityEnvRef.current?.landmarks || CHICAGO_LANDMARKS}
+          onTeleportToLandmark={handleTeleportToLandmark}
+        />
+      </div>
 
       {/* Interactive HUD Overlay */}
       <GameHUD

@@ -85,3 +85,17 @@ export interface DestructibleProp {
   ry: number;
   rz: number;
 }
+
+export type LandmarkCategory = 'tower' | 'bridge' | 'transit' | 'historic' | 'waterfront';
+
+export interface CityLandmark {
+  id: string;
+  name: string;
+  shortLabel: string;
+  category: LandmarkCategory;
+  x: number;
+  z: number;
+  color: string;
+  description: string;
+}
+
